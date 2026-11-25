@@ -11,90 +11,95 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CallAllocationServiceTest {
 
-    private final CallAllocationService service = new CallAllocationService();
-    private Node node;
-    private  Call call;
+  private final CallAllocationService service = new CallAllocationService();
 
-    @Test
-    void allocatesCallToRegisteredNodeInRequestedRegion() {
-        node = new Node("node-eu-1", "eu-west", 100, 20);
-        call = new Call("call-1", "eu-west");
-        service.registerNode(node);
+  @Test
+  void allocatesCallToRegisteredNodeInRequestedRegion() {
+    service.registerNode(new Node("node-eu-1", "eu-west", 100, 20));
 
-        String nodeId = service.allocateCall(call);
+    String nodeId = service.allocateCall(new Call("call-1", "eu-west"));
 
-        assertThat(nodeId).isEqualTo("node-eu-1");
-    }
+    assertThat(nodeId).isEqualTo("node-eu-1");
+  }
 
-    @Test
-    void ignoresNodesOutsideRequestedRegion() {
-        node = new Node("node-eu-1", "eu-east", 100, 0);
-        call = new Call("call-1", "eu-west");
-        service.registerNode(node);
+  @Test
+  void ignoresNodesOutsideRequestedRegion() {
+    service.registerNode(new Node("node-eu-1", "eu-east", 100, 0));
 
-        assertThatThrownBy(() -> service.allocateCall(call))
-                .isInstanceOf(NoAvailableNodeException.class);
-    }
+    assertThatThrownBy(() -> service.allocateCall(new Call("call-1", "eu-west")))
+        .isInstanceOf(NoAvailableNodeException.class);
+  }
 
-    @Test
-    void repeatedAllocationOfSameCallIdReturnsSameNode() {
-        service.registerNode(new Node("node-eu-1", "eu-west", 100, 0));
-        service.registerNode(new Node("node-eu-2", "eu-west", 100, 0));
-        call = new Call("call-1", "eu-west");
+  @Test
+  void repeatedAllocationOfSameCallIdReturnsSameNode() {
+    Call call = new Call("call-1", "eu-west");
+    service.registerNode(new Node("node-eu-1", "eu-west", 100, 0));
+    service.registerNode(new Node("node-eu-2", "eu-west", 100, 0));
 
-        String firstNodeId = service.allocateCall(call);
-        String secondNodeId = service.allocateCall(call);
+    String firstNodeId = service.allocateCall(call);
+    String secondNodeId = service.allocateCall(call);
 
-        assertThat(secondNodeId).isEqualTo(firstNodeId);
-    }
+    assertThat(secondNodeId).isEqualTo(firstNodeId);
+  }
 
-    @Test
-    void picksLeastLoadedNodeInRegion() {
-        service.registerNode(new Node("node-eu-busy", "eu-west", 100, 90));
-        service.registerNode(new Node("node-eu-idle", "eu-west", 100, 10));
+  @Test
+  void picksLeastLoadedNodeInRegion() {
+    service.registerNode(new Node("node-eu-busy", "eu-west", 100, 90));
+    service.registerNode(new Node("node-eu-idle", "eu-west", 100, 10));
 
-        String nodeId = service.allocateCall(new Call("call-1", "eu-west"));
+    String nodeId = service.allocateCall(new Call("call-1", "eu-west"));
 
-        assertThat(nodeId).isEqualTo("node-eu-idle");
-    }
+    assertThat(nodeId).isEqualTo("node-eu-idle");
+  }
 
-    @Test
-    void throwsWhenNoNodeHasFreeCapacityInRegion() {
-        service.registerNode(new Node("node-eu-1", "eu-west", 10, 10));
+  @Test
+  void throwsWhenNoNodeHasFreeCapacityInRegion() {
+    service.registerNode(new Node("node-eu-1", "eu-west", 10, 10));
 
-        assertThatThrownBy(() -> service.allocateCall(new Call("call-1", "eu-west")))
-                .isInstanceOf(NoAvailableNodeException.class);
-    }
+    assertThatThrownBy(() -> service.allocateCall(new Call("call-1", "eu-west")))
+        .isInstanceOf(NoAvailableNodeException.class);
+  }
 
-    @Test
-    void endingACallFreesUpCapacityForFurtherAllocations() {
-        service.registerNode(new Node("node-eu-1", "eu-west", 1, 0));
-        service.allocateCall(new Call("call-1", "eu-west"));
+  @Test
+  void endingACallFreesUpCapacityForFurtherAllocations() {
+    service.registerNode(new Node("node-eu-1", "eu-west", 1, 0));
+    service.allocateCall(new Call("call-1", "eu-west"));
 
-        assertThatThrownBy(() -> service.allocateCall(new Call("call-2", "eu-west")))
-                .isInstanceOf(NoAvailableNodeException.class);
+    assertThatThrownBy(() -> service.allocateCall(new Call("call-2", "eu-west")))
+        .isInstanceOf(NoAvailableNodeException.class);
 
-        service.endCall("call-1");
+    service.endCall("call-1");
 
-        String nodeId = service.allocateCall(new Call("call-2", "eu-west"));
-        assertThat(nodeId).isEqualTo("node-eu-1");
-    }
+    String nodeId = service.allocateCall(new Call("call-2", "eu-west"));
+    assertThat(nodeId).isEqualTo("node-eu-1");
+  }
 
-    @Test
-    void endingAnUnknownCallThrows() {
-        assertThatThrownBy(() -> service.endCall("unknown-call"))
-                .isInstanceOf(CallNotFoundException.class);
-    }
+  @Test
+  void endingAnUnknownCallThrows() {
+    assertThatThrownBy(() -> service.endCall("unknown-call"))
+        .isInstanceOf(CallNotFoundException.class);
+  }
 
-    @Test
-    void registeringAnExistingNodeIdUpdatesItsCapacityInfo() {
-        service.registerNode(new Node("node-eu-1", "eu-west", 10, 10));
-        assertThatThrownBy(() -> service.allocateCall(new Call("call-1", "eu-west")))
-                .isInstanceOf(NoAvailableNodeException.class);
+  @Test
+  void endingTheSameCallTwiceThrowsOnSecondAttempt() {
+    service.registerNode(new Node("node-eu-1", "eu-west", 100, 0));
+    service.allocateCall(new Call("call-1", "eu-west"));
 
-        service.registerNode(new Node("node-eu-1", "eu-west", 10, 0));
+    service.endCall("call-1");
 
-        String nodeId = service.allocateCall(new Call("call-1", "eu-west"));
-        assertThat(nodeId).isEqualTo("node-eu-1");
-    }
+    assertThatThrownBy(() -> service.endCall("call-1"))
+        .isInstanceOf(CallNotFoundException.class);
+  }
+
+  @Test
+  void registeringAnExistingNodeIdUpdatesItsCapacityInfo() {
+    service.registerNode(new Node("node-eu-1", "eu-west", 10, 10));
+    assertThatThrownBy(() -> service.allocateCall(new Call("call-1", "eu-west")))
+        .isInstanceOf(NoAvailableNodeException.class);
+
+    service.registerNode(new Node("node-eu-1", "eu-west", 10, 0));
+
+    String nodeId = service.allocateCall(new Call("call-1", "eu-west"));
+    assertThat(nodeId).isEqualTo("node-eu-1");
+  }
 }
